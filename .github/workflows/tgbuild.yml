@@ -1,0 +1,126 @@
+name: Build for Telegram APK
+
+on:
+  # به شما اجازه می‌دهد این Workflow را به صورت دستی از تب Actions اجرا کنید
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag for the release (e.g., 1.8.5). Leave empty to just build.'
+        required: false
+        type: string
+      app_name:
+        description: 'The base name for the output APK files.'
+        required: false
+        type: string
+        default: 'v2plus'
+
+  # همچنین با هر پوش به شاخه master به صورت خودکار اجرا می‌شود
+  push:
+    branches:
+      - master
+
+jobs:
+  build_and_release: # نام Job منحصر به فرد
+    runs-on: ubuntu-latest
+    name: Build, Notify and Release
+
+    steps:
+    # --- بخش ۱: آماده‌سازی و بیلد کردن پروژه ---
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+        fetch-depth: '0'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install NDK and Setup Gradle
+      run: |
+        echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.13113456"
+        echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.13113456" >> $GITHUB_ENV
+        sed -i '10i\ndkVersion = "29.0.13113456"' ${{ github.workspace }}/V2rayNG/app/build.gradle.kts
+
+    - name: Build libtun2socks
+      run: |
+        bash compile-tun2socks.sh
+
+    - name: Copy libtun2socks
+      run: |
+        cp -r ${{ github.workspace }}/libs ${{ github.workspace }}/V2rayNG/app
+
+    - name: Fetch AndroidLibXrayLite tag
+      run: |
+        pushd AndroidLibXrayLite
+        CURRENT_TAG=$(git describe --tags --abbrev=0)
+        echo "Current tag in this repo: $CURRENT_TAG"
+        echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+        popd
+
+    - name: Download libv2ray
+      uses: robinraju/release-downloader@v1
+      with:
+        repository: '2dust/AndroidLibXrayLite'
+        tag: ${{ env.CURRENT_TAG }}
+        fileName: 'libv2ray.aar'
+        out-file-path: V2rayNG/app/libs/
+
+    - name: Setup Golang
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'AndroidLibXrayLite/go.mod'
+        cache: false
+
+    - name: Build libhysteria2
+      run: |
+        bash libhysteria2.sh
+
+    - name: Copy libhysteria2
+      run: |
+        cp -r ${{ github.workspace }}/hysteria/libs ${{ github.workspace }}/V2rayNG/app
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    - name: Decode Keystore
+      id: android_keystore
+      uses: timheuer/base64-to-file@v1
+      with:
+        fileName: "android_keystore.jks"
+        encodedString: ${{ secrets.APP_KEYSTORE_BASE64 }}
+
+    - name: Build APK
+      run: |
+        cd ${{ github.workspace }}/V2rayNG
+        echo "sdk.dir=${ANDROID_HOME}" > local.properties
+        chmod +x gradlew
+        ./gradlew assembleRelease -PappName=${{ github.event.inputs.app_name || 'v2rayNG' }} -Pandroid.injected.signing.store.file=${{ steps.android_keystore.outputs.filePath }} -Pandroid.injected.signing.store.password=${{ secrets.APP_KEYSTORE_PASSWORD }} -Pandroid.injected.signing.key.alias=${{ secrets.APP_KEYSTORE_ALIAS }} -Pandroid.injected.signing.key.password=${{ secrets.APP_KEY_PASSWORD }}
+
+    # --- بخش ۲: اطلاع‌رسانی و انتشار ---
+
+    - name: Send APK to Telegram
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        document: "V2rayNG/app/build/outputs/apk/fdroid/release/*.apk"
+        message: |
+          ✅ **New Build Ready!**
+          
+          **Commit:** `${{ github.event.commits[0].message }}`
+          
+          You can download the attached APKs.
+
+    - name: Upload APK to GitHub Release
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+      uses: svenstaro/upload-release-action@v2
+      with:
+        file: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/fdroid/release/*.apk
+        tag: ${{ github.event.inputs.release_tag }}
+        file_glob: true
+        prerelease: true
+        overwrite: true

@@ -45,5 +45,19 @@ class AngApplication : MultiDexApplication() {
         es.dmoral.toasty.Toasty.Config.getInstance()
             .setGravity(android.view.Gravity.BOTTOM, 0, 200)
             .apply()
+			
+		// === افزودن این بخش برای V2Plus ===
+		// مقداردهی اولیه فایربیس (حیاتی برای نوتیفیکیشن)
+		// نکته: اگر از google-services plugin استفاده کرده باشید، معمولا خودکار است
+		// اما اضافه کردن صریح آن اطمینان بخش است.
+		try {
+			com.google.firebase.FirebaseApp.initializeApp(this)
+		} catch (e: Exception) {
+			e.printStackTrace()
+		}
+		
+		// اگر می‌خواهید به محض باز شدن برنامه وضعیت نوتیفیکیشن را چک کنید یا تاپیک خاصی را سابسکرایب کنید:
+		com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("all_users")
+		// ===================================	
     }
 }

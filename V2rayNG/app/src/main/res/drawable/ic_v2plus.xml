@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="75dp"
+    android:height="75dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- حرف V -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 256 128 L 384 128 L 512 640 L 640 128 L 768 128 L 576 896 H 448 L 256 128 Z" />
+
+    <!-- علامت + -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 768 256 H 896 V 384 H 832 V 640 H 704 V 384 H 640 V 256 H 768 Z" />
+
+</vector>

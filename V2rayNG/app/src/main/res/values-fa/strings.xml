@@ -9,6 +9,19 @@
     <string name="action_stop_service">توقف کردن سرویس</string>
     <string name="migration_fail">انتقال داده انجام نشد!</string>
     <string name="pull_down_to_refresh">لطفاً برای تازه کردن، پایین بکشید!</string>
+	
+	<!-- Activation -->
+	<string name="activation_title">فعال‌سازی برنامه</string>
+    <string name="activation_desc">برای استفاده از برنامه، لطفا کد لایسنس خریداری شده را وارد کنید.</string>
+    <string name="activation_input_hint">کد لایسنس (Token)</string>
+    <string name="activation_btn">بررسی و فعال‌سازی</string>
+    <string name="activation_checking">در حال بررسی...</string>
+    <string name="activation_msg_success">فعال‌سازی با موفقیت انجام شد</string>
+    <string name="activation_msg_invalid">کد لایسنس نامعتبر است</string>
+    <string name="activation_msg_used">این لایسنس قبلا استفاده شده است</string>
+    <string name="activation_msg_empty">لطفا کد را وارد کنید</string>
+    <string name="activation_msg_error">خطا در ارتباط با سرور</string>
+    <string name="activation_msg_incomplete">اطلاعات ناقص است</string>
 
     <!-- Notifications -->
     <string name="notification_action_stop_v2ray">توقف</string>

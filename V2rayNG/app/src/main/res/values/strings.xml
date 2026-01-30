@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">v2rayNG</string>
+	<string name="title_server">Config</string>
+	<string name="activation_base_url">http://v2pg.v2pg.runflare.run/?vlm_action=verify</string>
+
+	<string name="refresh_servers">Refresh Servers</string>
+    <string name="menu_options">Options</string>
     <string name="app_widget_name">Switch</string>
     <string name="app_tile_name">Switch</string>
     <string name="app_tile_first_use">First use of this feature, please use the app to add server</string>
@@ -10,6 +15,19 @@
     <string name="action_stop_service">Stop service</string>
     <string name="migration_fail">Data migration failed!</string>
     <string name="pull_down_to_refresh">Please pull down to refresh!</string>
+	
+	<!-- Activation -->
+	<string name="activation_title">Activate the application</string>
+	<string name="activation_desc">To use the application, please enter the purchased license code.</string>
+	<string name="activation_input_hint">License code (Token)</string>
+	<string name="activation_btn">Check and activate</string>
+	<string name="activation_checking">Checking...</string>
+	<string name="activation_msg_success">Activation was successful</string>
+	<string name="activation_msg_invalid">License code is invalid</string>
+	<string name="activation_msg_used">This license has already been used</string>
+	<string name="activation_msg_empty">Please enter the code</string>
+	<string name="activation_msg_error">Error communicating with the server</string>
+	<string name="activation_msg_incomplete">Incomplete information</string>
 
     <!-- Notifications -->
     <string name="notification_action_stop_v2ray">Stop</string>
@@ -22,7 +40,6 @@
     <string name="toast_services_failure">Start Services Failure</string>
 
     <!--ServerActivity-->
-    <string name="title_server">Config</string>
     <string name="menu_item_add_config">Add config</string>
     <string name="menu_item_save_config">Save config</string>
     <string name="menu_item_edit_config">Edit config</string>

@@ -48,6 +48,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     val mainViewModel: MainViewModel by viewModels()
     private lateinit var groupPagerAdapter: GroupPagerAdapter
     private var tabMediator: TabLayoutMediator? = null
+	
+	/ تعریف انیماتور در سطح کلاس
+    private var fabAnimator: ObjectAnimator? = null
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -66,8 +69,57 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+		
+		// در ابتدای onCreate
+		if (!MmkvManager.isAppActivated()) {
+			startActivity(Intent(this, ActivationActivity::class.java))
+			finish()
+			return
+		}
+		
         setContentView(binding.root)
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
+		
+		// در انتهای onCreate و در متد onNewIntent
+		intent.getStringExtra("openUrl")?.let { url ->
+			if (url.startsWith("http")) {
+				try {
+					val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+					startActivity(browserIntent)
+				} catch (e: Exception) {
+					// خطا در باز کردن لینک
+				}
+			}
+		}
+		
+		binding.fab.setOnClickListener {
+            // منطق کلیک بر اساس حالت جدید
+            when (mainViewModel.vpnState.value) {
+                VpnState.CONNECTED -> {
+                    V2RayServiceManager.stopVService(this)
+                }
+                VpnState.DISCONNECTED -> {
+                    if (mainViewModel.serversCache.count() > 0) {
+                        mainViewModel.testAllRealPing()
+                    } else {
+                        toast("هیچ سروری برای تست وجود ندارد. لطفاً لیست را به‌روزرسانی کنید.")
+                    }
+                }
+                VpnState.TESTING -> {
+                    toast("در حال تست سرورها، لطفاً صبر کنید...")
+                    // در حالت تست، کاری انجام نده
+                }
+                else -> {
+                    // برای حالت null
+                }
+            }
+        }
+        binding.layoutTest.setOnClickListener {
+            if (mainViewModel.vpnState.value == VpnState.CONNECTED) {
+                setTestState(getString(R.string.connection_test_testing))
+                mainViewModel.testCurrentServerRealPing()
+            }
+        }
 
         // setup viewpager and tablayout
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
@@ -95,7 +147,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         binding.fab.setOnClickListener { handleFabAction() }
         binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
-
+		
+		addMustafaSubscription()
         setupGroupTab()
         setupViewModel()
         mainViewModel.reloadServerList()
@@ -103,12 +156,101 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
         }
     }
-
-    private fun setupViewModel() {
-        mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
-        mainViewModel.isRunning.observe(this) { isRunning ->
-            applyRunningState(false, isRunning)
+	
+	override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Process openUrl from new Intent
+        intent.getStringExtra("openUrl")?.let { url ->
+            if (url.startsWith("http")) {
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                try {
+                    startActivity(browserIntent)
+                } catch (e: Exception) {
+                    toast("Cannot open URL: ${e.message}")
+                }
+            }
         }
+    }
+	
+	private fun addMustafaSubscription() {
+        val appName = getString(R.string.app_name)
+        // val mustafaUrl = "https://raw.githubusercontent.com/mustafa137608064/subdr/refs/heads/main/users/$appName.php"
+        val mustafaUrl = "https://fervent-hamilton-zwkjnlgwo.storage.c2.liara.space/$appName.txt"
+        val existingSubscriptions = MmkvManager.decodeSubscriptions()
+        if (existingSubscriptions.none { it.second.url == mustafaUrl }) {
+            val subscriptionId = Utils.getUuid()
+            val subscriptionItem = SubscriptionItem(
+                remarks = "$appName Subscription",
+                url = mustafaUrl,
+                enabled = true
+            )
+            MmkvManager.encodeSubscription(subscriptionId, subscriptionItem)
+            Log.d(AppConfig.TAG, "Added $appName subscription with ID: $subscriptionId")
+        } else {
+            Log.d(AppConfig.TAG, "$appName subscription already exists")
+        }
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    private fun setupViewModel() {
+        mainViewModel.updateListAction.observe(this) { index ->
+            if (index >= 0) {
+                adapter.notifyItemChanged(index)
+            } else {
+                adapter.notifyDataSetChanged()
+            }
+        }
+        mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
+
+        mainViewModel.vpnState.observe(this) { state ->
+            adapter.isRunning = (state == VpnState.CONNECTED)
+            binding.fab.isEnabled = true
+            
+            // توقف و ریست انیمیشن قبلی
+            fabAnimator?.cancel()
+            binding.fab.rotation = 0f
+
+            when (state) {
+                VpnState.DISCONNECTED -> {
+                    binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                    binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
+					binding.fab.contentDescription = getString(R.string.tasker_start_service)
+                    setTestState(getString(R.string.connection_not_connected))
+                    binding.layoutTest.isFocusable = false
+                }
+                VpnState.TESTING -> {
+                    binding.fab.setImageResource(R.drawable.ic_sync_24dp)
+                    binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_testing))
+                    setTestState(getString(R.string.connection_standby))
+                    binding.fab.isEnabled = false
+                    
+                    // شروع انیمیشن چرخش
+                    fabAnimator = ObjectAnimator.ofFloat(binding.fab, "rotation", 0f, 360f).apply {
+                        duration = 1000
+                        repeatCount = ValueAnimator.INFINITE
+                        interpolator = LinearInterpolator()
+                        start()
+                    }
+                }
+                VpnState.CONNECTED -> {
+                    binding.fab.setImageResource(R.drawable.ic_stop_24dp)
+                    binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+					binding.fab.contentDescription = getString(R.string.action_stop_service)
+                    setTestState(getString(R.string.connection_connected))
+                    binding.layoutTest.isFocusable = true
+                }
+                else -> {}
+            }
+        }
+
+        mainViewModel.startVpnConnection.observe(this) {
+            if (it == true) {
+                connectToVpn()
+                mainViewModel.startVpnConnection.value = false
+            }
+        }
+
         mainViewModel.startListenBroadcast()
         mainViewModel.initAssets(assets)
     }
@@ -156,25 +298,171 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             // service not running: keep existing no-op (could show a message if desired)
         }
     }
-
-    private fun startV2Ray() {
-        if (MmkvManager.getSelectServer().isNullOrEmpty()) {
-            toast(R.string.title_file_chooser)
+	
+	private fun connectToVpn() {
+        val selectedServer = MmkvManager.getSelectServer()
+        if (selectedServer.isNullOrEmpty()) {
+            toast("سروری برای اتصال انتخاب نشده است.")
+            mainViewModel.vpnState.postValue(VpnState.DISCONNECTED)
             return
         }
-        V2RayServiceManager.startVService(this)
+
+        if ((MmkvManager.decodeSettingsString(AppConfig.PREF_MODE) ?: VPN) == VPN) {
+            val intent = VpnService.prepare(this)
+            if (intent == null) {
+                lifecycleScope.launch { startV2Ray() }
+            } else {
+                requestVpnPermission.launch(intent)
+            }
+        } else {
+            lifecycleScope.launch { startV2Ray() }
+        }
+    }
+	
+    private suspend fun startV2Ray() {
+        val selectedServer = MmkvManager.getSelectServer()
+        if (selectedServer.isNullOrEmpty()) {
+            toast("لطفاً یک سرور را انتخاب کنید یا منتظر اتمام به‌روزرسانی بمانید")
+            mainViewModel.vpnState.postValue(VpnState.DISCONNECTED)
+            return
+        }
+        try {
+            if (mainViewModel.vpnState.value == VpnState.CONNECTED || isServiceRunning(this, "com.v2ray.ang.service.V2RayVpnService")) {
+                V2RayServiceManager.stopVService(this)
+                delay(0)
+                if (isServiceRunning(this, "com.v2ray.ang.service.V2RayVpnService")) {
+                    toastError("سرویس هنوز در حال اجرا است، لطفاً دوباره تلاش کنید")
+                    return
+                }
+            }
+            V2RayServiceManager.startVService(this)
+        } catch (e: Exception) {
+            toastError("خطا در شروع سرویس VPN: ${e.message}")
+            Log.e(AppConfig.TAG, "Failed to start V2Ray service", e)
+        }
     }
 
-    fun restartV2Ray() {
-        if (mainViewModel.isRunning.value == true) {
+    private fun restartV2Ray() {
+        if (mainViewModel.vpnState.value == VpnState.CONNECTED || isServiceRunning(this, "com.v2ray.ang.service.V2RayVpnService")) {
             V2RayServiceManager.stopVService(this)
         }
         lifecycleScope.launch {
             delay(500)
-            startV2Ray()
+            connectToVpn()
         }
     }
+	
+	private fun updateServerList() {
+        binding.pbWaiting.show()
+        isUpdatingServers = true
+        binding.fab.isEnabled = false
 
+        Api.fetchAllSubscriptions()
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe({ configsList ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val newServers = mutableListOf<String>()
+                        configsList.forEach { config ->
+                            val (count, countSub) = AngConfigManager.importBatchConfig(config, mainViewModel.subscriptionId, false)
+                            if (count > 0 || countSub > 0) {
+                                newServers.add(config)
+                                Log.d(AppConfig.TAG, "Imported $count servers and $countSub subscriptions")
+                            }
+                        }
+                        if (newServers.isNotEmpty()) {
+                            mainViewModel.removeAllServer()
+                            newServers.forEach { config ->
+                                AngConfigManager.importBatchConfig(config, mainViewModel.subscriptionId, true)
+                            }
+                            withContext(Dispatchers.Main) {
+                                toast(getString(R.string.title_import_config_count, newServers.size))
+                                mainViewModel.reloadServerList()
+                                initGroupTab()
+                                // تست خودکار پینگ حذف شد
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                toastError("خطا: بروزرسانی انجام نشد")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            toastError("خطا در وارد کردن سرورها: ${e.message}")
+                            Log.e(AppConfig.TAG, "Failed to import configs", e)
+                        }
+                    } finally {
+                        withContext(Dispatchers.Main) {
+                            binding.pbWaiting.hide()
+                            isUpdatingServers = false
+                            binding.fab.isEnabled = true
+                        }
+                    }
+                }
+            }, { error ->
+                toastError("خطا در دریافت سرورها: ${error.message}")
+                Log.e(AppConfig.TAG, "Error fetching subscriptions: ${error.message}", error)
+                binding.pbWaiting.hide()
+                isUpdatingServers = false
+                binding.fab.isEnabled = true
+            })
+            .let { disposables.add(it) }
+    }
+	
+	private fun importConfigViaSub(): Boolean {
+        try {
+            toast(R.string.title_sub_update)
+            MmkvManager.decodeSubscriptions().forEach {
+                if (TextUtils.isEmpty(it.first) || TextUtils.isEmpty(it.second.remarks) || TextUtils.isEmpty(it.second.url)) {
+                    return@forEach
+                }
+                if (!it.second.enabled) {
+                    return@forEach
+                }
+                val url = Utils.idnToASCII(it.second.url)
+                if (!Utils.isValidUrl(url)) {
+                    toastError("URL نامعتبر: ${it.second.remarks}")
+                    return@forEach
+                }
+                Log.d(AppConfig.TAG, "Fetching subscription: $url")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val configText = try {
+                        Utils.getUrlContentWithCustomUserAgent(url)
+                    } catch (e: Exception) {
+                        launch(Dispatchers.Main) {
+                            toastError("\"${it.second.remarks}\" ${getString(R.string.toast_failure)}: ${e.message}")
+                        }
+                        Log.e(AppConfig.TAG, "Failed to fetch subscription $url: ${e.message}", e)
+                        return@launch
+                    }
+                    try {
+                        val (count, countSub) = AngConfigManager.importBatchConfig(configText, it.first, true)
+                        launch(Dispatchers.Main) {
+                            if (count > 0 || countSub > 0) {
+                                toast(getString(R.string.title_import_config_count, count))
+                                mainViewModel.reloadServerList()
+                                initGroupTab()
+                            } else {
+                                toastError("هیچ سروری از ${it.second.remarks} وارد نشد")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        launch(Dispatchers.Main) {
+                            toastError("خطا در وارد کردن سرورها از ${it.second.remarks}: ${e.message}")
+                        }
+                        Log.e(AppConfig.TAG, "Failed to import configs from $url: ${e.message}", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            toastError("خطا در به‌روزرسانی ساب‌اسکریپشن‌ها: ${e.message}")
+            Log.e(AppConfig.TAG, "Error updating subscriptions", e)
+            return false
+        }
+        return true
+    }
+	
     private fun setTestState(content: String?) {
         binding.tvTestState.text = content
     }
@@ -202,10 +490,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onResume() {
         super.onResume()
+		mainViewModel.reloadServerList()
     }
 
     override fun onPause() {
         super.onPause()
+    }
+	
+	override fun onStart() {
+        super.onStart()
+        if (isServiceRunning(this, "com.v2ray.ang.service.V2RayVpnService")) {
+            V2RayServiceManager.stopVService(this)
+            lifecycleScope.launch {
+                delay(0)
+                mainViewModel.vpnState.value = VpnState.DISCONNECTED
+            }
+        }
+        updateServerList()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -298,14 +599,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         R.id.ping_all -> {
-            toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
-            mainViewModel.testAllTcping()
+            if (mainViewModel.vpnState.value == VpnState.TESTING) {
+                toast("تست پینگ در حال انجام است.")
+            } else {
+                toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
+                mainViewModel.testAllTcping() // فرض بر اینکه این متد هم برای تست دستی استفاده می‌شود
+            }
             true
         }
 
         R.id.real_ping_all -> {
-            toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
-            mainViewModel.testAllRealPing()
+            if (mainViewModel.vpnState.value == VpnState.TESTING) {
+                toast("تست پینگ در حال انجام است.")
+            } else {
+                toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
+                mainViewModel.testAllRealPing()
+            }
             true
         }
 
@@ -338,7 +647,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             importConfigViaSub()
             true
         }
-
+		
+		R.id.refresh_servers -> {
+            if (isUpdatingServers) {
+                toast("در حال به‌روزرسانی سرورها، لطفاً صبر کنید")
+                true
+            } else {
+                updateServerList()
+                true
+            }
+        }
 
         else -> super.onOptionsItemSelected(item)
     }
@@ -570,26 +888,42 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
-        // Handle navigation view item clicks here.
         when (item.itemId) {
-            R.id.sub_setting -> requestActivityLauncher.launch(Intent(this, SubSettingActivity::class.java))
-            R.id.per_app_proxy_settings -> requestActivityLauncher.launch(Intent(this, PerAppProxyActivity::class.java))
-            R.id.routing_setting -> requestActivityLauncher.launch(Intent(this, RoutingSettingActivity::class.java))
-            R.id.user_asset_setting -> requestActivityLauncher.launch(Intent(this, UserAssetActivity::class.java))
-            R.id.settings -> requestActivityLauncher.launch(Intent(this, SettingsActivity::class.java))
-            R.id.promotion -> Utils.openUri(this, "${Utils.decode(AppConfig.APP_PROMOTION_URL)}?t=${System.currentTimeMillis()}")
-            R.id.logcat -> startActivity(Intent(this, LogcatActivity::class.java))
+            R.id.nav_check_update -> {
+                val appName = getString(R.string.app_name)
+                val updateUrl = "https://v2pgweb.storage.c2.liara.space/update1.10.27.html#appName"
+                WebViewDialogFragment.newInstance(updateUrl).show(supportFragmentManager, "WebViewDialog")
+            }
+            R.id.nav_tutorial_web -> {
+                val tutorialUrl = "https://v2pgweb.storage.c2.liara.space/tutorial.html"
+                WebViewDialogFragment.newInstance(tutorialUrl).show(supportFragmentManager, "WebViewDialog")
+            }
+            R.id.nav_report_problem -> {
+                val reportUrl = "https://v2pgweb.storage.c2.liara.space/contact.html"
+                WebViewDialogFragment.newInstance(reportUrl).show(supportFragmentManager, "WebViewDialog")
+            }
+            R.id.nav_about_us -> {
+                val aboutusUrl = "https://v2pgweb.storage.c2.liara.space/about.html"
+                WebViewDialogFragment.newInstance(aboutusUrl).show(supportFragmentManager, "WebViewDialog")
+            }
             R.id.check_for_update -> startActivity(Intent(this, CheckUpdateActivity::class.java))
-            R.id.backup_restore -> requestActivityLauncher.launch(Intent(this, BackupActivity::class.java))
-            R.id.about -> startActivity(Intent(this, AboutActivity::class.java))
         }
-
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
-
+	
     override fun onDestroy() {
-        tabMediator?.detach()
         super.onDestroy()
+        // متوقف کردن انیمیشن برای جلوگیری از نشت حافظه
+        fabAnimator?.cancel()
+        fabAnimator = null
+        if (isServiceRunning(this, "com.v2ray.ang.service.V2RayVpnService")) {
+            V2RayServiceManager.stopVService(this)
+            lifecycleScope.launch {
+                delay(0)
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+        disposables.clear()
     }
 }

@@ -39,10 +39,34 @@ object MmkvManager {
     private val subStorage by lazy { MMKV.mmkvWithID(ID_SUB, MMKV.MULTI_PROCESS_MODE) }
     private val assetStorage by lazy { MMKV.mmkvWithID(ID_ASSET, MMKV.MULTI_PROCESS_MODE) }
     private val settingsStorage by lazy { MMKV.mmkvWithID(ID_SETTING, MMKV.MULTI_PROCESS_MODE) }
+	
+	// 1. تعریف کلیدهای جدید (در بالای فایل داخل private val)
+	private const val KEY_APP_ACTIVATED = "key_app_activated"
+	private const val KEY_ACTIVATION_TOKEN = "key_activation_token"
 
     //endregion
 
     //region Server
+	
+	// 2. اضافه کردن متدهای عمومی (region Server)
+
+	fun setAppActivated(activated: Boolean, token: String = "") {
+		val kv = MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE)
+		kv.encode(KEY_APP_ACTIVATED, activated)
+		if (token.isNotEmpty()) {
+			kv.encode(KEY_ACTIVATION_TOKEN, token)
+		}
+	}
+
+	fun isAppActivated(): Boolean {
+		val kv = MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE)
+		return kv.decodeBool(KEY_APP_ACTIVATED, false)
+	}
+
+	fun getActivationToken(): String? {
+		val kv = MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE)
+		return kv.decodeString(KEY_ACTIVATION_TOKEN, "")
+	}
 
     /**
      * Gets the selected server GUID.

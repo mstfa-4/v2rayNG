@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+	// خط زیر را اضافه کنید:
+    id("com.google.gms.google-services")
     id("com.jaredsburrows.license")
 }
 
@@ -9,7 +11,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "com.v2plus.ang"
         minSdk = 24
         targetSdk = 36
         versionCode = 707
@@ -193,4 +195,26 @@ dependencies {
     testImplementation(libs.org.mockito.mockito.inline)
     testImplementation(libs.mockito.kotlin)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+	
+	// === افزودن کتابخانه‌های V2Plus ===
+	
+	// Retrofit & Network
+	implementation("com.squareup.retrofit2:retrofit:2.9.0")
+	implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+	implementation("com.squareup.retrofit2:adapter-rxjava2:2.9.0")
+	implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
+
+	// RxJava
+	implementation("io.reactivex.rxjava2:rxjava:2.2.21")
+	implementation("io.reactivex.rxjava2:rxandroid:2.1.1")
+    // Firebase BoM (مدیریت نسخه‌های فایربیس)
+    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
+    
+    // ماژول‌های فایربیس
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-inappmessaging-display")
+
+    // کتابخانه Glide (برای نمایش عکس در نوتیفیکیشن)
+    implementation("com.github.bumptech.glide:glide:4.16.0")
 }
